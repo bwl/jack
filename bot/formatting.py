@@ -112,29 +112,42 @@ def format_text(label: str, text: str) -> str:
     return _truncate(f"<b>{escape(label)}</b>\n\n<pre>{escape(text)}</pre>")
 
 
-def format_help() -> str:
-    return (
-        "<b>Jack — Forest Telegram Bot</b>\n\n"
-        "<b>Forest:</b>\n"
-        "/search <i>query</i>  — search the Forest\n"
-        "/s <i>query</i>  — alias for /search\n"
-        "/read <i>ref</i>  — read a node (UUID prefix)\n"
-        "/r <i>ref</i>  — alias for /read\n"
-        "/capture <i>Title | Body | #tags</i>  — capture a note\n"
-        "/c <i>Title | Body | #tags</i>  — alias for /capture\n"
-        "/stats  — node/edge counts &amp; degree stats\n\n"
-        "<b>Portfolio:</b>\n"
-        "/ideas <i>query</i>  — search ideas\n"
-        "/idea <i>name</i>  — show idea details\n"
-        "/projects <i>query</i>  — search projects\n"
-        "/project <i>name</i>  — show project summary\n"
-        "/portfolio  — search across all sources\n\n"
-        "<b>Novels:</b>\n"
-        "/novels <i>query</i>  — list/search novels\n"
-        "/novel <i>name</i>  — show novel details\n\n"
-        "/help  — this message\n\n"
-        "<i>Any other text → forest search</i>"
-    )
+def format_help(has_tools: bool = True) -> str:
+    lines = [
+        "<b>Jack — Forest Telegram Bot</b>\n",
+        "<b>Forest:</b>",
+        "/search <i>query</i>  — search the Forest",
+        "/s <i>query</i>  — alias for /search",
+        "/read <i>ref</i>  — read a node (UUID prefix)",
+        "/r <i>ref</i>  — alias for /read",
+        "/capture <i>Title | Body | #tags</i>  — capture a note",
+        "/c <i>Title | Body | #tags</i>  — alias for /capture",
+        "/stats  — node/edge counts &amp; degree stats",
+    ]
+
+    if has_tools:
+        lines += [
+            "",
+            "<b>Portfolio:</b>",
+            "/ideas <i>query</i>  — search ideas",
+            "/idea <i>name</i>  — show idea details",
+            "/projects <i>query</i>  — search projects",
+            "/project <i>name</i>  — show project summary",
+            "/portfolio  — search across all sources",
+            "",
+            "<b>Novels:</b>",
+            "/novels <i>query</i>  — list/search novels",
+            "/novel <i>name</i>  — show novel details",
+        ]
+
+    lines += [
+        "",
+        "/help  — this message",
+        "",
+        "<i>Any other text → forest search</i>",
+    ]
+
+    return "\n".join(lines)
 
 
 def format_error(err: str) -> str:

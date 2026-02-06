@@ -1,0 +1,15 @@
+[Unit]
+Description=Jack Telegram Bot
+After=network.target forest.service
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/root/developer/jack
+ExecStart=/usr/local/bin/uv run python -m bot
+Restart=on-failure
+RestartSec=5
+EnvironmentFile=/root/developer/jack/.env
+
+[Install]
+WantedBy=multi-user.target

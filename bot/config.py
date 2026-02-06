@@ -2,14 +2,17 @@ from __future__ import annotations
 
 import os
 import sys
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 
 @dataclass(frozen=True)
 class Config:
     telegram_token: str
     allowed_users: frozenset[int]
+    mode: str = "api"  # "api" or "cli"
     forest_bin: str = "forest"
+    forest_url: str = "http://localhost:3000"
+    forest_api_key: str = ""
 
     @classmethod
     def from_env(cls) -> Config:
@@ -29,5 +32,24 @@ class Config:
             print("JACK_ALLOWED_USERS must be comma-separated integers", file=sys.stderr)
             sys.exit(1)
 
+        mode = os.environ.get("JACK_MODE", "api").strip().lower()
+        if mode not in ("api", "cli"):
+            print("JACK_MODE must be 'api' or 'cli'", file=sys.stderr)
+            sys.exit(1)
+
         forest_bin = os.environ.get("JACK_FOREST_BIN", "forest").strip()
-        return cls(telegram_token=token, allowed_users=allowed, forest_bin=forest_bin)
+        forest_url = os.environ.get("JACK_FOREST_URL", "http://localhost:3000").strip()
+        forest_api_key = os.environ.get("JACK_FOREST_API_KEY", "").strip()
+
+        if mode == "api" and not forest_api_key:
+            print("JACK_FOREST_API_KEY is required when JACK_MODE=api", file=sys.stderr)
+            sys.exit(1)
+
+        return cls(
+            telegram_token=token,
+            allowed_users=allowed,
+            mode=mode,
+            forest_bin=forest_bin,
+            forest_url=forest_url,
+            forest_api_key=forest_api_key,
+        )

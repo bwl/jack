@@ -15,6 +15,7 @@ from telegram.ext import (
 
 from .config import Config
 from .forest import ForestCLI
+from .forest_api import ForestAPI
 from .router import Router
 from .tools import IdeaCLI, NovelCLI
 from . import formatting
@@ -33,9 +34,19 @@ def _build_keyboard(buttons: list[tuple[str, str]]) -> InlineKeyboardMarkup | No
 class JackBot:
     def __init__(self, config: Config) -> None:
         self.config = config
-        self.forest = ForestCLI(bin=config.forest_bin)
-        self.ideas = IdeaCLI()
-        self.novels = NovelCLI()
+
+        if config.mode == "api":
+            self.forest = ForestAPI(
+                base_url=config.forest_url,
+                api_key=config.forest_api_key,
+            )
+            self.ideas = None
+            self.novels = None
+        else:
+            self.forest = ForestCLI(bin=config.forest_bin)
+            self.ideas = IdeaCLI()
+            self.novels = NovelCLI()
+
         self.router = Router(self.forest, self.ideas, self.novels)
 
     def _is_authorized(self, update: Update) -> bool:
@@ -118,18 +129,25 @@ class JackBot:
         for cmd in ("search", "s"):
             app.add_handler(CommandHandler(cmd, self._search_handler))
 
-        # All other commands
-        other_commands = (
-            "read", "r", "capture", "c", "stats",
+        # Forest commands (always available)
+        forest_commands = ("read", "r", "capture", "c", "stats", "start", "help")
+
+        # Portfolio/novel commands (only in CLI mode)
+        tool_commands = (
             "ideas", "idea", "projects", "project", "portfolio",
             "novels", "novel",
-            "start", "help",
         )
-        for cmd in other_commands:
+
+        all_commands = list(forest_commands)
+        if self.config.mode == "cli":
+            all_commands.extend(tool_commands)
+
+        for cmd in all_commands:
             app.add_handler(CommandHandler(cmd, self._command_handler))
 
         app.add_handler(CallbackQueryHandler(self._callback_handler))
         app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, self._text_handler))
 
-        logger.info("Jack bot starting (long polling)...")
+        mode_label = f"mode={self.config.mode}"
+        logger.info(f"Jack bot starting ({mode_label}, long polling)...")
         app.run_polling(allowed_updates=Update.ALL_TYPES)
