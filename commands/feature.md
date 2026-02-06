@@ -20,7 +20,7 @@ Guide the user through filing a structured feature request. Gather the following
 Create a searchable node first:
 
 ```bash
-cat <<'EOF' | forest capture --stdin --tags "#project/forest" "#feature/<area>"
+cat <<'EOF' | forest capture --title "Feature: <description>" --stdin --tags "#project/forest,#feature/<area>"
 FEATURE: <description>
 
 USE CASE: <why this matters>

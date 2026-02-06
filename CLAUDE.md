@@ -25,11 +25,14 @@ forest <command> --tldr
 | Action | Command |
 |--------|---------|
 | Search | `forest search "query"` |
-| Capture | `echo "..." \| forest capture --stdin --tags "..."` |
-| Explore | `forest explore` |
+| Capture | `forest capture --title "Short Title" --stdin --tags "..."` |
+| Read | `forest read <ref>` |
+| Edit | `forest edit <ref>` |
+| Update | `forest update <ref> --title "..."` |
+| Delete | `forest delete <ref>` |
+| Tag | `forest tag <ref> <tags>` |
 | Link | `forest link <ref1> <ref2>` |
-| Read | `forest node read <ref>` |
-| Edit | `forest node edit <ref>` |
+| Explore | `forest explore` |
 | Edges | `forest edges` |
 | Stats | `forest stats` |
 
@@ -38,8 +41,8 @@ forest <command> --tldr
 Forest uses git-style progressive abbreviation:
 - UUID prefix: `7fa7` (4+ chars)
 - Recency: `@` (last), `@1` (second last)
-- Tag search: `#typescript`
-- Title search: `"UUID short"`
+- Tag filter (search): `forest search --mode metadata --tags "#typescript"`
+- Title filter (search): `forest search --mode metadata --title "Exact Title"`
 
 ## Core Workflows
 
@@ -54,16 +57,18 @@ forest search "X"
 Then read the top results for full context:
 
 ```bash
-forest node read <id>
+forest read <id>
 ```
 
 ### 2. Capture Knowledge
 
-When you discover something useful, capture it with structured tags:
+When you discover something useful, **always use `--title` for a short, scannable title** and put the detail in `--body` or `--stdin`:
 
 ```bash
-echo "The scoring algorithm uses dual scores: semantic (embedding cosine similarity) and tag (IDF-weighted Jaccard). Edges are kept if either score exceeds its threshold." | forest capture --stdin --tags "#project/$(basename "$PWD")" "#pattern/scoring"
+forest capture --title "Dual Score Algorithm" --body "The scoring algorithm uses dual scores: semantic (embedding cosine similarity) and tag (IDF-weighted Jaccard). Edges are kept if either score exceeds its threshold." --tags "#project/$(basename "$PWD"),#pattern/scoring"
 ```
+
+Without `--title`, the entire body becomes the title — which makes search results, edge listings, and stats unreadable.
 
 Capture when:
 - You discover a non-obvious pattern
@@ -95,9 +100,7 @@ When you hit a Forest bug:
 
 1. **Capture it first** (creates a searchable node):
 ```bash
-cat <<'EOF' | forest capture --stdin --tags "#project/forest" "#bug/<area>"
-BUG: <one-line symptom>
-
+cat <<'EOF' | forest capture --title "Bug: <one-line symptom>" --stdin --tags "#project/forest,#bug/<area>"
 REPRO:
 1. <step one>
 2. <step two>
@@ -139,9 +142,7 @@ When you see a missing capability:
 
 1. **Capture the idea**:
 ```bash
-cat <<'EOF' | forest capture --stdin --tags "#project/forest" "#feature/<area>"
-FEATURE: <one-line description>
-
+cat <<'EOF' | forest capture --title "Feature: <one-line description>" --stdin --tags "#project/forest,#feature/<area>"
 USE CASE: <why this matters>
 CURRENT WORKAROUND: <how you work around it today>
 PROPOSED: <what the solution could look like>
@@ -171,9 +172,9 @@ EOF
 When the user corrects you, log it:
 
 ```bash
-echo "FEEDBACK: <what I did wrong>
+echo "WRONG: <what I did wrong>
 CORRECT: <what I should have done>
-LESSON: <generalized takeaway>" | forest capture --stdin --tags "#skill/lumberjack" "#feedback/correction"
+LESSON: <generalized takeaway>" | forest capture --title "Feedback: <short summary>" --stdin --tags "#skill/lumberjack,#feedback/correction"
 ```
 
 Review corrections to improve:
@@ -195,6 +196,7 @@ forest search "#feedback/correction"
 ## Quality Standards
 
 Good captures are:
+- **Titled**: Always use `--title` with a short (3-8 word) scannable name. Never let body content become the title.
 - **Specific**: "The retry logic uses exponential backoff with jitter" not "handles retries"
 - **Contextual**: Include why, not just what
 - **Searchable**: Use terms someone would search for

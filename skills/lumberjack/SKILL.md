@@ -39,14 +39,14 @@ forest search "API authentication pattern"
 forest search "database migration"
 ```
 
-After searching, read the top results with `forest node read <id>` to get full content.
+After searching, read the top results with `forest read <id>` to get full content.
 
 ### 2. Capture Learnings
 
 When you discover something useful during development:
 
 ```bash
-echo "The scoring algorithm uses dual scores: semantic (embedding cosine similarity) and tag (IDF-weighted Jaccard). Edges are kept if either score exceeds its threshold." | forest capture --stdin --tags "#project/$(basename "$PWD")" "#pattern/scoring"
+echo "The scoring algorithm uses dual scores: semantic (embedding cosine similarity) and tag (IDF-weighted Jaccard). Edges are kept if either score exceeds its threshold." | forest capture --title "Dual score algorithm" --stdin --tags "#project/$(basename "$PWD"),#pattern/scoring"
 ```
 
 Capture when:
@@ -60,7 +60,7 @@ Capture when:
 When you fix a bug, capture it with reproduction steps and code references:
 
 ```bash
-cat <<'EOF' | forest capture --stdin --tags "#project/$(basename "$PWD")" "#bug/<area>"
+cat <<'EOF' | forest capture --title "Bug: <one-line symptom>" --stdin --tags "#project/$(basename "$PWD"),#bug/<area>"
 BUG: <one-line symptom>
 
 REPRO:
@@ -85,7 +85,7 @@ gh issue create --repo bwl/forest --label bug --title "Bug: <symptom>" --body "<
 When you notice a missing capability in Forest:
 
 ```bash
-cat <<'EOF' | forest capture --stdin --tags "#project/forest" "#feature/<area>"
+cat <<'EOF' | forest capture --title "Feature: <one-line description>" --stdin --tags "#project/forest,#feature/<area>"
 FEATURE: <one-line description>
 
 USE CASE: <why this matters>
@@ -105,9 +105,9 @@ gh issue create --repo bwl/forest --label enhancement --title "Feature: <descrip
 When the user corrects you (wrong command, missed context, bad capture), log it:
 
 ```bash
-echo "FEEDBACK: <what I did wrong>
+echo "WRONG: <what I did wrong>
 CORRECT: <what I should have done>
-LESSON: <generalized takeaway>" | forest capture --stdin --tags "#skill/lumberjack" "#feedback/correction"
+LESSON: <generalized takeaway>" | forest capture --title "Feedback: <short summary>" --stdin --tags "#skill/lumberjack,#feedback/correction"
 ```
 
 This helps track skill effectiveness over time. Query with:
@@ -150,9 +150,9 @@ Use when two notes are conceptually related but weren't automatically linked.
 Deep-dive into a specific note:
 
 ```bash
-forest node read <ref>      # By short ID, e.g., "7fa7"
-forest node read @          # Last captured note
-forest node read "#auth"    # By tag search
+forest read <ref>      # By short ID, e.g., "7fa7"
+forest read @          # Last captured note
+forest search --mode metadata --tags "#auth"   # Find by tag, then forest read <id>
 ```
 
 ## Best Practices
@@ -181,13 +181,13 @@ Good captures are:
 | Action | Command |
 |--------|---------|
 | Search | `forest search "query"` |
-| Capture | `echo "..." \| forest capture --stdin --tags "#project/$(basename "$PWD")"` |
-| Bug report | `cat <<'EOF' \| forest capture --stdin --tags "#project/..." "#bug/..."` |
-| Feature req | `cat <<'EOF' \| forest capture --stdin --tags "#project/..." "#feature/..."` |
+| Capture | `echo "..." \| forest capture --title "..." --stdin --tags "#project/$(basename "$PWD"),#pattern/<topic>"` |
+| Bug report | `cat <<'EOF' \| forest capture --title "Bug: ..." --stdin --tags "#project/$(basename "$PWD"),#bug/<area>"` |
+| Feature req | `cat <<'EOF' \| forest capture --title "Feature: ..." --stdin --tags "#project/forest,#feature/<area>"` |
 | File issue | `gh issue create --repo bwl/forest --label bug --title "..." --body "..."` |
 | Explore | `forest explore` |
 | Link | `forest link <ref1> <ref2>` |
-| Read | `forest node read <ref>` |
+| Read | `forest read <ref>` |
 | Stats | `forest stats` |
 
 ## Skill Effectiveness Tracking

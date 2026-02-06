@@ -5,7 +5,10 @@
       "Bash(gh issue create:*)",
       "Bash(gh issue list:*)",
       "Bash(gh issue view:*)",
-      "Skill(lumberjack)"
+      "Skill(lumberjack)",
+      "WebSearch",
+      "WebFetch(domain:github.com)",
+      "Bash(ncli:*)"
     ]
   }
 }

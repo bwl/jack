@@ -21,7 +21,7 @@ Guide the user through filing a structured bug report. Gather the following info
 Create a searchable node first:
 
 ```bash
-cat <<'EOF' | forest capture --stdin --tags "#project/forest" "#bug/<area>"
+cat <<'EOF' | forest capture --title "Bug: <symptom>" --stdin --tags "#project/forest,#bug/<area>"
 BUG: <symptom>
 
 REPRO:

@@ -59,6 +59,17 @@ The lumberjack skill works from any directory. Invoke it when you need to search
 > /feature                # File a feature request on Forest
 ```
 
+## Services (as JACK)
+
+- Search-first context and summaries from Forest
+- Capture learnings/decisions/gotchas with consistent tags
+- Draft bug reports and feature requests (Forest note → GitHub issue)
+
+See:
+- `docs/jack-services.md`
+- `docs/bug-report.md`
+- `docs/feature-request.md`
+
 ## Quick Start
 
 ```bash
@@ -66,7 +77,7 @@ The lumberjack skill works from any directory. Invoke it when you need to search
 forest search "authentication"
 
 # Capture a learning
-echo "Redis caching reduces API latency by 10x for repeated queries" | forest capture --stdin --tags "#project/myapp" "#pattern/caching"
+echo "Redis caching reduces API latency by 10x for repeated queries" | forest capture --title "Redis caching speeds repeats" --stdin --tags "#project/myapp,#pattern/caching"
 
 # Explore connections
 forest explore --search "caching"
