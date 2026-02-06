@@ -6,10 +6,17 @@ from typing import Any
 TELEGRAM_MAX = 4096
 
 
+_TRUNCATION_SUFFIX = "\n\n<i>[truncated]</i>"
+
+
 def _truncate(text: str, max_len: int = TELEGRAM_MAX) -> str:
     if len(text) <= max_len:
         return text
-    return text[: max_len - 20] + "\n\n<i>[truncated]</i>"
+    # Truncate, then close any open <pre> tags so Telegram can parse the HTML
+    cut = text[: max_len - len(_TRUNCATION_SUFFIX) - 10]
+    open_pre = cut.count("<pre>") - cut.count("</pre>")
+    suffix = "</pre>" * open_pre + _TRUNCATION_SUFFIX
+    return cut + suffix
 
 
 def search_buttons(data: dict[str, Any]) -> list[tuple[str, str]]:
