@@ -83,3 +83,17 @@ class ForestAPI:
             "degree": {},
             "recent": nodes.get("recent", []),
         }
+
+    async def synthesize(self, node_ids: list[str]) -> dict[str, Any]:
+        resp = await self._client.post(
+            f"{self._base}/nodes/synthesize",
+            json={"nodeIds": node_ids},
+            timeout=90.0,
+        )
+        data = self._unwrap(resp)
+        node = data.get("node", {})
+        return {
+            "title": data.get("title", ""),
+            "node": node,
+            "body_preview": data.get("body", "")[:500],
+        }

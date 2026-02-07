@@ -16,6 +16,8 @@ You have access to the user's Forest knowledge base through these tools:
 - **forest_read**: Read a specific node's full body by UUID prefix. Use after search to get details.
 - **forest_capture**: Save a new note with a title, body, and optional tags.
 - **forest_stats**: Get counts (nodes, edges) and recent nodes.
+- **forest_synthesize**: Synthesize a new article from 2+ nodes using GPT-5. Pass node UUID prefixes. \
+This is slow (30-90s) — tell the user you're synthesizing and it may take a moment.
 
 ## Workflow
 1. When asked "what do I know about X" or similar — call forest_search first, then forest_read on \

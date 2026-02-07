@@ -87,11 +87,29 @@ TOOLS = [
             },
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "forest_synthesize",
+            "description": "Synthesize a new article from 2+ existing nodes using GPT-5. Takes node UUID prefixes, calls the Forest server's LLM to produce a synthesis, and saves it as a new node. This is slow (30-90s).",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "node_ids": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "List of 2+ node UUID prefixes to synthesize.",
+                    },
+                },
+                "required": ["node_ids"],
+            },
+        },
+    },
 ]
 
 MAX_ROUNDS = 5
 MAX_REPEAT = 3
-TOTAL_TIMEOUT = 60.0
+TOTAL_TIMEOUT = 120.0
 
 
 async def _dispatch_tool(
@@ -111,6 +129,8 @@ async def _dispatch_tool(
             )
         case "forest_stats":
             result = await forest.stats()
+        case "forest_synthesize":
+            result = await forest.synthesize(args["node_ids"])
         case _:
             return json.dumps({"error": f"Unknown tool: {name}"})
     return json.dumps(result, default=str)
@@ -213,7 +233,7 @@ class Agent:
                 "messages": messages,
                 "tools": TOOLS,
             },
-            timeout=min(timeout, 30.0),
+            timeout=min(timeout, 45.0),
         )
         resp.raise_for_status()
         return resp.json()
