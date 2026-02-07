@@ -13,6 +13,9 @@ class Config:
     forest_bin: str = "forest"
     forest_url: str = "http://localhost:3000"
     forest_api_key: str = ""
+    openrouter_api_key: str = ""
+    openrouter_model: str = "moonshotai/kimi-k2.5"
+    openrouter_base_url: str = "https://openrouter.ai/api/v1"
 
     @classmethod
     def from_env(cls) -> Config:
@@ -45,6 +48,14 @@ class Config:
             print("JACK_FOREST_API_KEY is required when JACK_MODE=api", file=sys.stderr)
             sys.exit(1)
 
+        openrouter_api_key = os.environ.get("JACK_OPENROUTER_API_KEY", "").strip()
+        openrouter_model = os.environ.get(
+            "JACK_OPENROUTER_MODEL", "moonshotai/kimi-k2.5",
+        ).strip()
+        openrouter_base_url = os.environ.get(
+            "JACK_OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1",
+        ).strip()
+
         return cls(
             telegram_token=token,
             allowed_users=allowed,
@@ -52,4 +63,7 @@ class Config:
             forest_bin=forest_bin,
             forest_url=forest_url,
             forest_api_key=forest_api_key,
+            openrouter_api_key=openrouter_api_key,
+            openrouter_model=openrouter_model,
+            openrouter_base_url=openrouter_base_url,
         )

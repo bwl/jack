@@ -1,9 +1,15 @@
 from __future__ import annotations
 
-from typing import Any, Protocol
+import logging
+from typing import Any, Protocol, TYPE_CHECKING
 
 from .tools import IdeaCLI, NovelCLI
 from . import formatting
+
+if TYPE_CHECKING:
+    from .agent import Agent
+
+logger = logging.getLogger(__name__)
 
 
 class ForestBackend(Protocol):
@@ -19,10 +25,12 @@ class Router:
         forest: ForestBackend,
         ideas: IdeaCLI | None = None,
         novels: NovelCLI | None = None,
+        agent: Agent | None = None,
     ) -> None:
         self.forest = forest
         self.ideas = ideas
         self.novels = novels
+        self.agent = agent
 
     async def handle_command(self, command: str, args: str) -> str:
         try:
@@ -68,7 +76,15 @@ class Router:
             return formatting.format_error(str(e))
 
     async def handle_text(self, text: str) -> str:
-        """Free-text messages default to search. Phase 2 growth seam."""
+        """Free text goes through the LLM agent if available, else plain search."""
+        if self.agent is not None:
+            try:
+                from .prompt import SYSTEM_PROMPT
+
+                return await self.agent.run(text, SYSTEM_PROMPT, self.forest)
+            except Exception:
+                logger.exception("Agent failed, falling back to search")
+
         try:
             data = await self.forest.search(text)
             return formatting.format_search(data)

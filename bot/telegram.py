@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 
+import httpx
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.constants import ChatAction, ParseMode
 from telegram.ext import (
@@ -13,6 +15,7 @@ from telegram.ext import (
     filters,
 )
 
+from .agent import Agent
 from .config import Config
 from .forest import ForestCLI
 from .forest_api import ForestAPI
@@ -47,7 +50,19 @@ class JackBot:
             self.ideas = IdeaCLI()
             self.novels = NovelCLI()
 
-        self.router = Router(self.forest, self.ideas, self.novels)
+        # LLM agent (optional — needs API key)
+        self.agent: Agent | None = None
+        if config.openrouter_api_key:
+            self._http_client = httpx.AsyncClient()
+            self.agent = Agent(
+                client=self._http_client,
+                api_key=config.openrouter_api_key,
+                model=config.openrouter_model,
+                base_url=config.openrouter_base_url,
+            )
+            logger.info("Agent enabled (model=%s)", config.openrouter_model)
+
+        self.router = Router(self.forest, self.ideas, self.novels, agent=self.agent)
 
     def _is_authorized(self, update: Update) -> bool:
         user = update.effective_user
@@ -88,13 +103,31 @@ class JackBot:
         await update.message.reply_text(reply, parse_mode=ParseMode.HTML)
 
     async def _text_handler(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-        """Free text → search with inline buttons."""
+        """Free text → agent (if available) or search with inline buttons."""
         if not self._is_authorized(update):
             return
 
         assert update.message is not None and update.message.text is not None
-        await update.message.chat.send_action(ChatAction.TYPING)
+        chat = update.message.chat
 
+        if self.agent is not None:
+            # Typing keepalive: re-send every 4s so Telegram doesn't drop the indicator
+            typing_task = asyncio.create_task(self._typing_keepalive(chat))
+            try:
+                reply = await self.router.handle_text(update.message.text)
+            finally:
+                typing_task.cancel()
+
+            try:
+                await update.message.reply_text(reply, parse_mode=ParseMode.HTML)
+            except Exception:
+                # HTML parse failure (bad LLM output) — retry without parse_mode
+                logger.warning("HTML parse failed, retrying as plain text")
+                await update.message.reply_text(reply)
+            return
+
+        # No agent — plain search with inline buttons
+        await chat.send_action(ChatAction.TYPING)
         try:
             data = await self.forest.search(update.message.text)
             text = formatting.format_search(data)
@@ -102,6 +135,16 @@ class JackBot:
             await update.message.reply_text(text, parse_mode=ParseMode.HTML, reply_markup=keyboard)
         except Exception as e:
             await update.message.reply_text(formatting.format_error(str(e)), parse_mode=ParseMode.HTML)
+
+    @staticmethod
+    async def _typing_keepalive(chat: Any) -> None:
+        """Send TYPING action every 4 seconds until cancelled."""
+        try:
+            while True:
+                await chat.send_action(ChatAction.TYPING)
+                await asyncio.sleep(4)
+        except asyncio.CancelledError:
+            pass
 
     async def _callback_handler(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         """Handle inline button presses (e.g. read:abcd1234)."""
