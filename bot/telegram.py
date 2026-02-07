@@ -15,7 +15,7 @@ from telegram.ext import (
     filters,
 )
 
-from .agent import Agent
+from .agent import Agent, _tool_label
 from .config import Config
 from .forest import ForestCLI
 from .forest_api import ForestAPI
@@ -111,12 +111,33 @@ class JackBot:
         chat = update.message.chat
 
         if self.agent is not None:
+            # Status message: edited in-place as tool calls happen
+            status_msg = None
+
+            async def _on_tool_call(step: int, name: str, args: dict) -> None:
+                nonlocal status_msg
+                label = _tool_label(name, args)
+                text = f"Step {step}: {label}"
+                if status_msg is None:
+                    status_msg = await chat.send_message(text)
+                else:
+                    await status_msg.edit_text(text)
+
             # Typing keepalive: re-send every 4s so Telegram doesn't drop the indicator
             typing_task = asyncio.create_task(self._typing_keepalive(chat))
             try:
-                reply = await self.router.handle_text(update.message.text)
+                reply = await self.router.handle_text(
+                    update.message.text, on_tool_call=_on_tool_call,
+                )
             finally:
                 typing_task.cancel()
+
+            # Clean up status message
+            if status_msg is not None:
+                try:
+                    await status_msg.delete()
+                except Exception:
+                    pass
 
             try:
                 await update.message.reply_text(reply, parse_mode=ParseMode.HTML)

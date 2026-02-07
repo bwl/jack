@@ -76,13 +76,19 @@ class Router:
         except Exception as e:
             return formatting.format_error(str(e))
 
-    async def handle_text(self, text: str) -> str:
+    async def handle_text(
+        self,
+        text: str,
+        on_tool_call: Any = None,
+    ) -> str:
         """Free text goes through the LLM agent if available, else plain search."""
         if self.agent is not None:
             try:
                 from .prompt import SYSTEM_PROMPT
 
-                return await self.agent.run(text, SYSTEM_PROMPT, self.forest)
+                return await self.agent.run(
+                    text, SYSTEM_PROMPT, self.forest, on_tool_call=on_tool_call,
+                )
             except Exception:
                 logger.exception("Agent failed, falling back to search")
 

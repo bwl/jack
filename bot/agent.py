@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import logging
 import time
+from collections.abc import Awaitable, Callable
 from typing import Any, TYPE_CHECKING
 
 import httpx
@@ -111,6 +112,24 @@ MAX_ROUNDS = 10
 MAX_REPEAT = 3
 TOTAL_TIMEOUT = 120.0
 
+ToolHook = Callable[[int, str, dict[str, Any]], Awaitable[None]]
+
+
+def _tool_label(name: str, args: dict[str, Any]) -> str:
+    match name:
+        case "forest_search":
+            return f"Searching: {args.get('query', '')}"
+        case "forest_read":
+            return f"Reading node {args.get('ref', '')}"
+        case "forest_capture":
+            return f"Capturing: {args.get('title', '')}"
+        case "forest_stats":
+            return "Checking stats"
+        case "forest_synthesize":
+            return "Synthesizing (this may take a moment)"
+        case _:
+            return name
+
 
 async def _dispatch_tool(
     name: str, args: dict[str, Any], forest: ForestBackend,
@@ -156,6 +175,7 @@ class Agent:
         user_message: str,
         system_prompt: str,
         forest: ForestBackend,
+        on_tool_call: ToolHook | None = None,
     ) -> str:
         """Run the agent loop. Returns the final text response."""
         messages: list[dict[str, Any]] = [
@@ -164,6 +184,7 @@ class Agent:
         ]
 
         call_history: list[str] = []
+        step = 0
         start = time.monotonic()
 
         for _ in range(MAX_ROUNDS):
@@ -202,7 +223,15 @@ class Agent:
                     logger.warning("Agent repeated %s %dx, aborting", name, repeat_count)
                     return "I got stuck in a loop. Try rephrasing your question?"
 
+                step += 1
                 logger.info("Tool call: %s(%s)", name, raw_args)
+
+                if on_tool_call:
+                    try:
+                        await on_tool_call(step, name, args)
+                    except Exception:
+                        logger.debug("on_tool_call hook failed", exc_info=True)
+
                 try:
                     result = await _dispatch_tool(name, args, forest)
                 except Exception as e:
