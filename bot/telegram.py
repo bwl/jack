@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 
 import httpx
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
@@ -142,9 +143,10 @@ class JackBot:
             try:
                 await update.message.reply_text(reply, parse_mode=ParseMode.HTML)
             except Exception:
-                # HTML parse failure (bad LLM output) — retry without parse_mode
-                logger.warning("HTML parse failed, retrying as plain text")
-                await update.message.reply_text(reply)
+                # HTML parse failure (bad LLM output) — strip tags and retry as plain text
+                logger.warning("HTML parse failed, stripping tags")
+                plain = re.sub(r"<[^>]+>", "", reply)
+                await update.message.reply_text(plain)
             return
 
         # No agent — plain search with inline buttons
