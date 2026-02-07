@@ -79,5 +79,9 @@ class ForestCLI:
         raw = await self._run("stats")
         return _normalize_stats(raw)
 
+    async def tags(self) -> dict[str, Any]:
+        raw = await self._run("tags", "list")
+        return {"tags": raw}
+
     async def synthesize(self, node_ids: list[str]) -> dict[str, Any]:
         raise RuntimeError("synthesize is only available in API mode")

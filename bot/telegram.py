@@ -111,6 +111,12 @@ class JackBot:
         assert update.message is not None and update.message.text is not None
         chat = update.message.chat
 
+        # Extract reply-to context for conversation threading
+        reply_context: str | None = None
+        reply_msg = update.message.reply_to_message
+        if reply_msg is not None and reply_msg.text:
+            reply_context = reply_msg.text
+
         if self.agent is not None:
             # Status message: edited in-place as tool calls happen
             status_msg = None
@@ -128,7 +134,9 @@ class JackBot:
             typing_task = asyncio.create_task(self._typing_keepalive(chat))
             try:
                 reply = await self.router.handle_text(
-                    update.message.text, on_tool_call=_on_tool_call,
+                    update.message.text,
+                    on_tool_call=_on_tool_call,
+                    reply_context=reply_context,
                 )
             finally:
                 typing_task.cancel()

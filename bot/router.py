@@ -17,6 +17,7 @@ class ForestBackend(Protocol):
     async def read(self, ref: str) -> dict[str, Any]: ...
     async def capture(self, title: str, body: str, tags: str | None = None) -> dict[str, Any]: ...
     async def stats(self) -> dict[str, Any]: ...
+    async def tags(self) -> dict[str, Any]: ...
     async def synthesize(self, node_ids: list[str]) -> dict[str, Any]: ...
 
 
@@ -80,14 +81,21 @@ class Router:
         self,
         text: str,
         on_tool_call: Any = None,
+        reply_context: str | None = None,
     ) -> str:
         """Free text goes through the LLM agent if available, else plain search."""
         if self.agent is not None:
             try:
                 from .prompt import SYSTEM_PROMPT
 
+                user_message = text
+                if reply_context:
+                    user_message = (
+                        f"[Previous message: {reply_context}]\n\n{text}"
+                    )
+
                 return await self.agent.run(
-                    text, SYSTEM_PROMPT, self.forest, on_tool_call=on_tool_call,
+                    user_message, SYSTEM_PROMPT, self.forest, on_tool_call=on_tool_call,
                 )
             except Exception:
                 logger.exception("Agent failed, falling back to search")

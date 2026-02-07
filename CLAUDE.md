@@ -41,7 +41,7 @@ forest <command> --tldr
 Forest uses git-style progressive abbreviation:
 - UUID prefix: `7fa7` (4+ chars)
 - Recency: `@` (last), `@1` (second last)
-- Tag filter (search): `forest search --mode metadata --tags "#typescript"`
+- Tag filter (search): `forest search --mode metadata --tags "tech:typescript"`
 - Title filter (search): `forest search --mode metadata --title "Exact Title"`
 
 ## Core Workflows
@@ -65,7 +65,7 @@ forest read <id>
 When you discover something useful, **always use `--title` for a short, scannable title** and put the detail in `--body` or `--stdin`:
 
 ```bash
-forest capture --title "Dual Score Algorithm" --body "The scoring algorithm uses dual scores: semantic (embedding cosine similarity) and tag (IDF-weighted Jaccard). Edges are kept if either score exceeds its threshold." --tags "#project/$(basename "$PWD"),#pattern/scoring"
+forest capture --title "Dual Score Algorithm" --body "The scoring algorithm uses dual scores: semantic (embedding cosine similarity) and tag (IDF-weighted Jaccard). Edges are kept if either score exceeds its threshold." --tags "project:forest,pattern:scoring"
 ```
 
 Without `--title`, the entire body becomes the title — which makes search results, edge listings, and stats unreadable.
@@ -100,7 +100,7 @@ When you hit a Forest bug:
 
 1. **Capture it first** (creates a searchable node):
 ```bash
-cat <<'EOF' | forest capture --title "Bug: <one-line symptom>" --stdin --tags "#project/forest,#bug/<area>"
+cat <<'EOF' | forest capture --title "Bug: <one-line symptom>" --stdin --tags "project:forest,bug:<area>"
 REPRO:
 1. <step one>
 2. <step two>
@@ -142,7 +142,7 @@ When you see a missing capability:
 
 1. **Capture the idea**:
 ```bash
-cat <<'EOF' | forest capture --title "Feature: <one-line description>" --stdin --tags "#project/forest,#feature/<area>"
+cat <<'EOF' | forest capture --title "Feature: <one-line description>" --stdin --tags "project:forest,feature:<area>"
 USE CASE: <why this matters>
 CURRENT WORKAROUND: <how you work around it today>
 PROPOSED: <what the solution could look like>
@@ -174,24 +174,32 @@ When the user corrects you, log it:
 ```bash
 echo "WRONG: <what I did wrong>
 CORRECT: <what I should have done>
-LESSON: <generalized takeaway>" | forest capture --title "Feedback: <short summary>" --stdin --tags "#skill/lumberjack,#feedback/correction"
+LESSON: <generalized takeaway>" | forest capture --title "Feedback: <short summary>" --stdin --tags "topic:lumberjack,pattern:correction"
 ```
 
 Review corrections to improve:
 ```bash
-forest search "#feedback/correction"
+forest search "pattern:correction"
 ```
 
-## Tag Conventions
+## Tag Schema
 
-- `#project/<name>` - Project filtering (use `$(basename "$PWD")` by default)
-- `#bug/<area>` - Bug reports (e.g., `#bug/scoring`, `#bug/api`)
-- `#feature/<area>` - Feature requests (e.g., `#feature/export`, `#feature/search`)
-- `#pattern/<topic>` - Recurring patterns (e.g., `#pattern/error-handling`)
-- `#decision/<topic>` - Architectural decisions (e.g., `#decision/database-choice`)
-- `#gotcha/<topic>` - Surprising behaviors (e.g., `#gotcha/async-timing`)
-- `#skill/lumberjack` - Meta: notes about Jack/lumberjack
-- `#feedback/correction` - Meta: correction tracking
+Canonical format: **`namespace:value`** — no `#` prefix, colon separator, lowercase, hyphens for multi-word.
+
+| Namespace | Purpose | Examples |
+|-----------|---------|----------|
+| `project` | Which project | `project:kingdom`, `project:forest`, `project:jack` |
+| `domain` | Top-level domain | `domain:projects`, `domain:ideas` |
+| `tech` | Technology | `tech:rust`, `tech:python`, `tech:bevy` |
+| `status` | Lifecycle | `status:active`, `status:dormant` |
+| `category` | Project category | `category:roguelike`, `category:knowledge`, `category:simulation` |
+| `area` | Feature area | `area:cli`, `area:tags`, `area:config` |
+| `bug` | Bug reports | `bug:tags-normalization`, `bug:capture-flags` |
+| `feature` | Feature requests | `feature:templates`, `feature:lint` |
+| `topic` | Content topic | `topic:worldbuilding`, `topic:writing`, `topic:ai` |
+| `pattern` | Recurring patterns | `pattern:tooling`, `pattern:planning` |
+
+Before tagging, check existing tags with `forest tags list` and reuse them. Never invent new namespaces.
 
 ## Quality Standards
 

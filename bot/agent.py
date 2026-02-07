@@ -70,7 +70,7 @@ TOOLS = [
                     },
                     "tags": {
                         "type": "string",
-                        "description": "Comma-separated tags, e.g. '#project/foo,#pattern/bar'.",
+                        "description": "Comma-separated tags in namespace:value format, e.g. 'project:forest,topic:cli'.",
                     },
                 },
                 "required": ["title", "body"],
@@ -82,6 +82,17 @@ TOOLS = [
         "function": {
             "name": "forest_stats",
             "description": "Get Forest knowledge base statistics (node/edge counts, recent nodes).",
+            "parameters": {
+                "type": "object",
+                "properties": {},
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "forest_tags",
+            "description": "List all existing tags in the Forest knowledge base. Call this before capturing to reuse existing tags and maintain consistency.",
             "parameters": {
                 "type": "object",
                 "properties": {},
@@ -125,6 +136,8 @@ def _tool_label(name: str, args: dict[str, Any]) -> str:
             return f"Capturing: {args.get('title', '')}"
         case "forest_stats":
             return "Checking stats"
+        case "forest_tags":
+            return "Listing tags"
         case "forest_synthesize":
             return "Synthesizing (this may take a moment)"
         case _:
@@ -148,6 +161,8 @@ async def _dispatch_tool(
             )
         case "forest_stats":
             result = await forest.stats()
+        case "forest_tags":
+            result = await forest.tags()
         case "forest_synthesize":
             result = await forest.synthesize(args["node_ids"])
         case _:

@@ -84,6 +84,10 @@ class ForestAPI:
             "recent": nodes.get("recent", []),
         }
 
+    async def tags(self) -> dict[str, Any]:
+        data = await self._get("/tags")
+        return {"tags": data.get("tags", [])}
+
     async def synthesize(self, node_ids: list[str]) -> dict[str, Any]:
         resp = await self._client.post(
             f"{self._base}/nodes/synthesize",
