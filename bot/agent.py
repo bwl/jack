@@ -9,6 +9,7 @@ from typing import Any, TYPE_CHECKING
 import httpx
 
 if TYPE_CHECKING:
+    from .commit_queue import CommitQueue
     from .github import GitHubCLI
     from .router import ForestBackend
 
@@ -103,22 +104,59 @@ TOOLS = [
     {
         "type": "function",
         "function": {
-            "name": "github_commits",
-            "description": "List recent commits on a GitHub repo's default branch.",
+            "name": "forest_update",
+            "description": "Update an existing Forest node's title, body, or tags. Omitted fields are preserved. Use this to prepend content to changelogs or expand existing nodes.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "ref": {
+                        "type": "string",
+                        "description": "UUID prefix (4+ characters) of the node to update.",
+                    },
+                    "title": {
+                        "type": "string",
+                        "description": "New title (optional — omit to keep current).",
+                    },
+                    "body": {
+                        "type": "string",
+                        "description": "New body content (optional — omit to keep current). Prepend new info to existing body.",
+                    },
+                    "tags": {
+                        "type": "string",
+                        "description": "Replacement tags in namespace:value format (optional — omit to keep current).",
+                    },
+                },
+                "required": ["ref"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "commit_queue",
+            "description": "Get outstanding commits from the ambient commit queue. These are commits that haven't been documented yet.",
             "parameters": {
                 "type": "object",
                 "properties": {
                     "repo": {
                         "type": "string",
-                        "description": "GitHub repo in owner/name format, e.g. 'bwl/forest'.",
+                        "description": "Filter by repo in owner/name format (optional — omit for all repos).",
                     },
-                    "since": {
+                },
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "commit_queue_ack",
+            "description": "Mark a repo's commits as processed after documenting them. Call this after you've captured or updated a changelog node.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "repo": {
                         "type": "string",
-                        "description": "ISO 8601 date to filter commits from (optional), e.g. '2026-02-01'.",
-                    },
-                    "limit": {
-                        "type": "integer",
-                        "description": "Max commits to return (default 10).",
+                        "description": "GitHub repo in owner/name format to acknowledge.",
                     },
                 },
                 "required": ["repo"],
@@ -210,10 +248,15 @@ def _tool_label(name: str, args: dict[str, Any]) -> str:
             return "Checking stats"
         case "forest_tags":
             return "Listing tags"
+        case "forest_update":
+            return f"Updating node {args.get('ref', '')}"
         case "forest_synthesize":
             return "Synthesizing (this may take a moment)"
-        case "github_commits":
-            return f"Checking commits on {args.get('repo', '')}"
+        case "commit_queue":
+            repo = args.get("repo", "all repos")
+            return f"Checking commit queue ({repo})"
+        case "commit_queue_ack":
+            return f"Acknowledging commits for {args.get('repo', '')}"
         case "github_compare":
             return f"Comparing {args.get('base', '')}...{args.get('head', '')} on {args.get('repo', '')}"
         case "github_pr_list":
@@ -227,6 +270,7 @@ async def _dispatch_tool(
     args: dict[str, Any],
     forest: ForestBackend,
     github: GitHubCLI | None = None,
+    commit_queue: CommitQueue | None = None,
 ) -> str:
     """Call the appropriate backend method and return JSON result."""
     match name:
@@ -242,19 +286,27 @@ async def _dispatch_tool(
             )
         case "forest_stats":
             result = await forest.stats()
+        case "forest_update":
+            result = await forest.update(
+                ref=args["ref"],
+                title=args.get("title"),
+                body=args.get("body"),
+                tags=args.get("tags"),
+            )
         case "forest_tags":
             result = await forest.tags()
         case "forest_synthesize":
             result = await forest.synthesize(args["node_ids"])
-        case "github_commits":
-            if github is None:
-                return json.dumps({"error": "GitHub tools not available"})
-            text = await github.recent_commits(
-                args["repo"],
-                since=args.get("since"),
-                limit=args.get("limit", 10),
-            )
-            return json.dumps({"output": text})
+        case "commit_queue":
+            if commit_queue is None:
+                return json.dumps({"error": "Commit queue not available"})
+            pending = commit_queue.get_pending(repo=args.get("repo"))
+            return json.dumps({"pending": pending, "count": len(pending)})
+        case "commit_queue_ack":
+            if commit_queue is None:
+                return json.dumps({"error": "Commit queue not available"})
+            cleared = commit_queue.ack(args["repo"])
+            return json.dumps({"acknowledged": args["repo"], "cleared": cleared})
         case "github_compare":
             if github is None:
                 return json.dumps({"error": "GitHub tools not available"})
@@ -291,6 +343,7 @@ class Agent:
         system_prompt: str,
         forest: ForestBackend,
         github: GitHubCLI | None = None,
+        commit_queue: CommitQueue | None = None,
         on_tool_call: ToolHook | None = None,
     ) -> str:
         """Run the agent loop. Returns the final text response."""
@@ -349,7 +402,7 @@ class Agent:
                         logger.debug("on_tool_call hook failed", exc_info=True)
 
                 try:
-                    result = await _dispatch_tool(name, args, forest, github=github)
+                    result = await _dispatch_tool(name, args, forest, github=github, commit_queue=commit_queue)
                 except Exception as e:
                     result = json.dumps({"error": str(e)})
 

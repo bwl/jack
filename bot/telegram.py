@@ -17,6 +17,7 @@ from telegram.ext import (
 )
 
 from .agent import Agent, _tool_label
+from .commit_queue import CommitQueue
 from .config import Config
 from .forest import ForestCLI
 from .forest_api import ForestAPI
@@ -58,6 +59,21 @@ class JackBot:
             self.github = GitHubCLI()
             logger.info("GitHub tools enabled (repos=%s)", config.github_repos)
 
+        # Commit queue (optional — needs GitHub + repos)
+        self.commit_queue: CommitQueue | None = None
+        if self.github and config.github_repos:
+            from pathlib import Path
+            self.commit_queue = CommitQueue(
+                github=self.github,
+                repos=list(config.github_repos),
+                state_path=Path(config.commit_queue_path),
+                poll_interval=config.commit_queue_interval,
+            )
+            logger.info(
+                "Commit queue enabled (repos=%s, interval=%ds)",
+                config.github_repos, config.commit_queue_interval,
+            )
+
         # LLM agent (optional — needs API key)
         self.agent: Agent | None = None
         if config.openrouter_api_key:
@@ -73,6 +89,7 @@ class JackBot:
         self.router = Router(
             self.forest, self.ideas, self.novels,
             agent=self.agent, github=self.github,
+            commit_queue=self.commit_queue,
         )
 
     def _is_authorized(self, update: Update) -> bool:
@@ -206,6 +223,20 @@ class JackBot:
                 text = formatting.format_error(str(e))
             await query.message.reply_text(text, parse_mode=ParseMode.HTML)
 
+    @staticmethod
+    async def _poll_commits(context: ContextTypes.DEFAULT_TYPE) -> None:
+        """Job callback: poll commit queue in the background."""
+        queue: CommitQueue | None = context.bot_data.get("commit_queue")
+        if queue is None:
+            return
+        try:
+            await queue.poll()
+            pending = len(queue.get_pending())
+            if pending:
+                logger.info("Commit queue: %d pending commits", pending)
+        except Exception:
+            logger.warning("Commit queue poll failed", exc_info=True)
+
     def run(self) -> None:
         app = Application.builder().token(self.config.telegram_token).build()
 
@@ -231,6 +262,16 @@ class JackBot:
 
         app.add_handler(CallbackQueryHandler(self._callback_handler))
         app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, self._text_handler))
+
+        # Register commit queue polling job
+        if self.commit_queue is not None and app.job_queue is not None:
+            app.bot_data["commit_queue"] = self.commit_queue
+            app.job_queue.run_repeating(
+                self._poll_commits,
+                interval=self.commit_queue.poll_interval,
+                first=10,  # first poll 10s after startup
+            )
+            logger.info("Commit queue polling registered (every %ds)", self.commit_queue.poll_interval)
 
         mode_label = f"mode={self.config.mode}"
         logger.info(f"Jack bot starting ({mode_label}, long polling)...")

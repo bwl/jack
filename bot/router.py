@@ -8,6 +8,7 @@ from . import formatting
 
 if TYPE_CHECKING:
     from .agent import Agent
+    from .commit_queue import CommitQueue
     from .github import GitHubCLI
 
 logger = logging.getLogger(__name__)
@@ -17,6 +18,7 @@ class ForestBackend(Protocol):
     async def search(self, query: str, limit: int = 5) -> dict[str, Any]: ...
     async def read(self, ref: str) -> dict[str, Any]: ...
     async def capture(self, title: str, body: str, tags: str | None = None) -> dict[str, Any]: ...
+    async def update(self, ref: str, title: str | None = None, body: str | None = None, tags: str | None = None) -> dict[str, Any]: ...
     async def stats(self) -> dict[str, Any]: ...
     async def tags(self) -> dict[str, Any]: ...
     async def synthesize(self, node_ids: list[str]) -> dict[str, Any]: ...
@@ -30,12 +32,14 @@ class Router:
         novels: NovelCLI | None = None,
         agent: Agent | None = None,
         github: GitHubCLI | None = None,
+        commit_queue: CommitQueue | None = None,
     ) -> None:
         self.forest = forest
         self.ideas = ideas
         self.novels = novels
         self.agent = agent
         self.github = github
+        self.commit_queue = commit_queue
 
     async def handle_command(self, command: str, args: str) -> str:
         try:
@@ -99,7 +103,8 @@ class Router:
 
                 return await self.agent.run(
                     user_message, SYSTEM_PROMPT, self.forest,
-                    github=self.github, on_tool_call=on_tool_call,
+                    github=self.github, commit_queue=self.commit_queue,
+                    on_tool_call=on_tool_call,
                 )
             except Exception:
                 logger.exception("Agent failed, falling back to search")

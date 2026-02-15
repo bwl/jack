@@ -75,6 +75,17 @@ class ForestCLI:
         raw = await self._run(*args, stdin=body)
         return _normalize_capture(raw)
 
+    async def update(self, ref: str, title: str | None = None, body: str | None = None, tags: str | None = None) -> dict[str, Any]:
+        args = ["update", ref]
+        if title is not None:
+            args.extend(["--title", title])
+        if body is not None:
+            args.extend(["--body", body])
+        if tags is not None:
+            args.extend(["--tags", tags])
+        raw = await self._run(*args)
+        return {"node": raw.get("node", {})}
+
     async def stats(self) -> dict[str, Any]:
         raw = await self._run("stats")
         return _normalize_stats(raw)

@@ -84,6 +84,21 @@ class ForestAPI:
             "recent": nodes.get("recent", []),
         }
 
+    async def _put(self, path: str, body: dict[str, Any]) -> dict[str, Any]:
+        resp = await self._client.put(f"{self._base}{path}", json=body)
+        return self._unwrap(resp)
+
+    async def update(self, ref: str, title: str | None = None, body: str | None = None, tags: str | None = None) -> dict[str, Any]:
+        payload: dict[str, Any] = {}
+        if title is not None:
+            payload["title"] = title
+        if body is not None:
+            payload["body"] = body
+        if tags is not None:
+            payload["tags"] = [t.strip().lstrip("#") for t in tags.split(",")]
+        data = await self._put(f"/nodes/{ref}", payload)
+        return {"node": data.get("node", {})}
+
     async def tags(self) -> dict[str, Any]:
         data = await self._get("/tags")
         return {"tags": data.get("tags", [])}

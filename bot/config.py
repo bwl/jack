@@ -18,6 +18,8 @@ class Config:
     openrouter_base_url: str = "https://openrouter.ai/api/v1"
     github_owner: str = "bwl"
     github_repos: tuple[str, ...] = ()
+    commit_queue_path: str = "commit-queue.json"
+    commit_queue_interval: int = 300
 
     @classmethod
     def from_env(cls) -> Config:
@@ -64,6 +66,13 @@ class Config:
             r.strip() for r in raw_repos.split(",") if r.strip()
         ) if raw_repos else ()
 
+        commit_queue_path = os.environ.get(
+            "JACK_COMMIT_QUEUE_PATH", "commit-queue.json",
+        ).strip()
+        commit_queue_interval = int(os.environ.get(
+            "JACK_COMMIT_QUEUE_INTERVAL", "300",
+        ).strip())
+
         return cls(
             telegram_token=token,
             allowed_users=allowed,
@@ -76,4 +85,6 @@ class Config:
             openrouter_base_url=openrouter_base_url,
             github_owner=github_owner,
             github_repos=github_repos,
+            commit_queue_path=commit_queue_path,
+            commit_queue_interval=commit_queue_interval,
         )
