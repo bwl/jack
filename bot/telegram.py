@@ -63,9 +63,13 @@ class JackBot:
         self.commit_queue: CommitQueue | None = None
         if self.github and config.github_repos:
             from pathlib import Path
+            full_repos = [
+                r if "/" in r else f"{config.github_owner}/{r}"
+                for r in config.github_repos
+            ]
             self.commit_queue = CommitQueue(
                 github=self.github,
-                repos=list(config.github_repos),
+                repos=full_repos,
                 state_path=Path(config.commit_queue_path),
                 poll_interval=config.commit_queue_interval,
             )
