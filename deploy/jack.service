@@ -4,12 +4,13 @@ After=network.target forest.service
 
 [Service]
 Type=simple
-User=root
-WorkingDirectory=/root/developer/jack
+User=jack
+Group=jack
+WorkingDirectory=/home/jack/jack
 ExecStart=/usr/local/bin/uv run python -m bot
 Restart=on-failure
 RestartSec=5
-EnvironmentFile=/root/developer/jack/.env
+EnvironmentFile=/home/jack/jack/.env
 
 [Install]
 WantedBy=multi-user.target
