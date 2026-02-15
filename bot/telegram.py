@@ -20,6 +20,7 @@ from .agent import Agent, _tool_label
 from .config import Config
 from .forest import ForestCLI
 from .forest_api import ForestAPI
+from .github import GitHubCLI
 from .router import Router
 from .tools import IdeaCLI, NovelCLI
 from . import formatting
@@ -51,6 +52,12 @@ class JackBot:
             self.ideas = IdeaCLI()
             self.novels = NovelCLI()
 
+        # GitHub CLI (optional — needs gh installed and authed)
+        self.github: GitHubCLI | None = None
+        if config.github_repos:
+            self.github = GitHubCLI()
+            logger.info("GitHub tools enabled (repos=%s)", config.github_repos)
+
         # LLM agent (optional — needs API key)
         self.agent: Agent | None = None
         if config.openrouter_api_key:
@@ -63,7 +70,10 @@ class JackBot:
             )
             logger.info("Agent enabled (model=%s)", config.openrouter_model)
 
-        self.router = Router(self.forest, self.ideas, self.novels, agent=self.agent)
+        self.router = Router(
+            self.forest, self.ideas, self.novels,
+            agent=self.agent, github=self.github,
+        )
 
     def _is_authorized(self, update: Update) -> bool:
         user = update.effective_user

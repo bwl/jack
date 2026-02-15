@@ -16,6 +16,8 @@ class Config:
     openrouter_api_key: str = ""
     openrouter_model: str = "moonshotai/kimi-k2.5"
     openrouter_base_url: str = "https://openrouter.ai/api/v1"
+    github_owner: str = "bwl"
+    github_repos: tuple[str, ...] = ()
 
     @classmethod
     def from_env(cls) -> Config:
@@ -56,6 +58,12 @@ class Config:
             "JACK_OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1",
         ).strip()
 
+        github_owner = os.environ.get("JACK_GITHUB_OWNER", "bwl").strip()
+        raw_repos = os.environ.get("JACK_GITHUB_REPOS", "").strip()
+        github_repos = tuple(
+            r.strip() for r in raw_repos.split(",") if r.strip()
+        ) if raw_repos else ()
+
         return cls(
             telegram_token=token,
             allowed_users=allowed,
@@ -66,4 +74,6 @@ class Config:
             openrouter_api_key=openrouter_api_key,
             openrouter_model=openrouter_model,
             openrouter_base_url=openrouter_base_url,
+            github_owner=github_owner,
+            github_repos=github_repos,
         )

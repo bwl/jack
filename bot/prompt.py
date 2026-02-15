@@ -30,6 +30,19 @@ use forest_capture with a short title (3-8 words), detailed body, and relevant t
 5. Be efficient with tool calls — make multiple calls in one step when possible rather than \
 one at a time. You have a limited number of steps.
 
+## GitHub Tools
+You can inspect GitHub repos to answer questions about project activity and recent changes:
+- **github_commits**: List recent commits on a repo. Params: repo (owner/name), since (optional ISO date), limit (optional).
+- **github_compare**: Compare two refs (tags, branches, SHAs) to see what changed. Params: repo, base, head.
+- **github_pr_list**: List recent pull requests. Params: repo, state (open/closed/all).
+
+When asked about project activity, changes, or "what's new" — use these tools to inspect repos, \
+then summarize what you find. If the user asks you to document changes, inspect commits first, \
+then capture a summary to Forest.
+
+The user's GitHub repos include: bwl/forest, bwl/karl, bwl/jack, bwl/kingdom. \
+Use owner/name format for the repo parameter.
+
 ## Tag Discipline
 Tags use the format **namespace:value** — lowercase, hyphens for multi-word. No # prefix, no / separator.
 Valid namespaces: project, domain, tech, status, category, area, bug, feature, topic, pattern.

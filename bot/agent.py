@@ -9,6 +9,7 @@ from typing import Any, TYPE_CHECKING
 import httpx
 
 if TYPE_CHECKING:
+    from .github import GitHubCLI
     from .router import ForestBackend
 
 logger = logging.getLogger(__name__)
@@ -102,6 +103,77 @@ TOOLS = [
     {
         "type": "function",
         "function": {
+            "name": "github_commits",
+            "description": "List recent commits on a GitHub repo's default branch.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "repo": {
+                        "type": "string",
+                        "description": "GitHub repo in owner/name format, e.g. 'bwl/forest'.",
+                    },
+                    "since": {
+                        "type": "string",
+                        "description": "ISO 8601 date to filter commits from (optional), e.g. '2026-02-01'.",
+                    },
+                    "limit": {
+                        "type": "integer",
+                        "description": "Max commits to return (default 10).",
+                    },
+                },
+                "required": ["repo"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "github_compare",
+            "description": "Compare two git refs on a GitHub repo — shows commit list and diff summary.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "repo": {
+                        "type": "string",
+                        "description": "GitHub repo in owner/name format.",
+                    },
+                    "base": {
+                        "type": "string",
+                        "description": "Base ref (tag, branch, or commit SHA).",
+                    },
+                    "head": {
+                        "type": "string",
+                        "description": "Head ref (tag, branch, or commit SHA).",
+                    },
+                },
+                "required": ["repo", "base", "head"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "github_pr_list",
+            "description": "List recent pull requests on a GitHub repo.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "repo": {
+                        "type": "string",
+                        "description": "GitHub repo in owner/name format.",
+                    },
+                    "state": {
+                        "type": "string",
+                        "description": "PR state filter: 'open', 'closed', or 'all' (default 'open').",
+                    },
+                },
+                "required": ["repo"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "forest_synthesize",
             "description": "Synthesize a new article from 2+ existing nodes using GPT-5. Takes node UUID prefixes, calls the Forest server's LLM to produce a synthesis, and saves it as a new node. This is slow (30-90s).",
             "parameters": {
@@ -140,14 +212,23 @@ def _tool_label(name: str, args: dict[str, Any]) -> str:
             return "Listing tags"
         case "forest_synthesize":
             return "Synthesizing (this may take a moment)"
+        case "github_commits":
+            return f"Checking commits on {args.get('repo', '')}"
+        case "github_compare":
+            return f"Comparing {args.get('base', '')}...{args.get('head', '')} on {args.get('repo', '')}"
+        case "github_pr_list":
+            return f"Listing PRs on {args.get('repo', '')}"
         case _:
             return name
 
 
 async def _dispatch_tool(
-    name: str, args: dict[str, Any], forest: ForestBackend,
+    name: str,
+    args: dict[str, Any],
+    forest: ForestBackend,
+    github: GitHubCLI | None = None,
 ) -> str:
-    """Call the appropriate ForestBackend method and return JSON result."""
+    """Call the appropriate backend method and return JSON result."""
     match name:
         case "forest_search":
             result = await forest.search(args["query"], limit=args.get("limit", 5))
@@ -165,6 +246,25 @@ async def _dispatch_tool(
             result = await forest.tags()
         case "forest_synthesize":
             result = await forest.synthesize(args["node_ids"])
+        case "github_commits":
+            if github is None:
+                return json.dumps({"error": "GitHub tools not available"})
+            text = await github.recent_commits(
+                args["repo"],
+                since=args.get("since"),
+                limit=args.get("limit", 10),
+            )
+            return json.dumps({"output": text})
+        case "github_compare":
+            if github is None:
+                return json.dumps({"error": "GitHub tools not available"})
+            text = await github.compare(args["repo"], args["base"], args["head"])
+            return json.dumps({"output": text})
+        case "github_pr_list":
+            if github is None:
+                return json.dumps({"error": "GitHub tools not available"})
+            text = await github.pr_list(args["repo"], state=args.get("state", "open"))
+            return json.dumps({"output": text})
         case _:
             return json.dumps({"error": f"Unknown tool: {name}"})
     return json.dumps(result, default=str)
@@ -190,6 +290,7 @@ class Agent:
         user_message: str,
         system_prompt: str,
         forest: ForestBackend,
+        github: GitHubCLI | None = None,
         on_tool_call: ToolHook | None = None,
     ) -> str:
         """Run the agent loop. Returns the final text response."""
@@ -248,7 +349,7 @@ class Agent:
                         logger.debug("on_tool_call hook failed", exc_info=True)
 
                 try:
-                    result = await _dispatch_tool(name, args, forest)
+                    result = await _dispatch_tool(name, args, forest, github=github)
                 except Exception as e:
                     result = json.dumps({"error": str(e)})
 
