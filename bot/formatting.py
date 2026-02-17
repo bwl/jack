@@ -150,5 +150,54 @@ def format_help(has_tools: bool = True) -> str:
     return "\n".join(lines)
 
 
+def read_nav_buttons(data: dict[str, Any]) -> list[tuple[str, str]]:
+    """Return navigation buttons for a read view: 'Related nodes' link."""
+    node = data.get("node", {})
+    rid = node.get("id", "")[:8]
+    if not rid:
+        return []
+    return [("Related nodes", f"edges:{rid}")]
+
+
+def format_edges(data: dict[str, Any], ref: str) -> str:
+    """Format an edges listing for Telegram."""
+    edges = data.get("edges", [])
+    if not edges:
+        return f"No connections found for <code>{escape(ref)}</code>."
+
+    lines = [f"<b>Connections for</b> <code>{escape(ref)}</code>\n"]
+    for edge in edges[:15]:
+        # Edges may have different shapes depending on backend
+        if isinstance(edge, dict):
+            source = edge.get("sourceTitle") or edge.get("source", "")[:8]
+            target = edge.get("targetTitle") or edge.get("target", "")[:8]
+            score = edge.get("score") or edge.get("similarity", 0)
+            lines.append(f"  {escape(str(source))} ↔ {escape(str(target))}  ({score:.2f})")
+        else:
+            lines.append(f"  {escape(str(edge))}")
+
+    if len(edges) > 15:
+        lines.append(f"\n<i>...and {len(edges) - 15} more</i>")
+
+    return _truncate("\n".join(lines))
+
+
+def edge_buttons(data: dict[str, Any]) -> list[tuple[str, str]]:
+    """Return read buttons for nodes discovered via edge listing."""
+    edges = data.get("edges", [])
+    buttons = []
+    seen: set[str] = set()
+    for edge in edges[:5]:
+        if not isinstance(edge, dict):
+            continue
+        for key in ("target", "source"):
+            nid = edge.get(key, "")
+            if nid and nid[:8] not in seen:
+                seen.add(nid[:8])
+                title = edge.get(f"{key}Title", nid[:8])[:30]
+                buttons.append((str(title), f"read:{nid[:8]}"))
+    return buttons[:5]
+
+
 def format_error(err: str) -> str:
     return f"Error: <code>{escape(err)}</code>"

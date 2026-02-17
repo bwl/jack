@@ -2,9 +2,9 @@
 
 What I want most, ordered by how much they'd change what I can do for you.
 
-## 1. Natural Language Understanding
+## 1. ~~Natural Language Understanding~~ (Done)
 
-Right now every Telegram message is either a slash command or a raw search string. I want to understand "what were those sci-fi novels with female protagonists?" and turn that into the right `ncli ls` call with filters — or chain a search, read the top hit, and summarize it. This is the Phase 2 LLM agent in `router.handle_text()`. It's the single biggest unlock because it turns the bot from a relay into an actual assistant.
+The LLM agent in `router.handle_text()` now handles free-text queries, chains tool calls, and summarizes results. This was the Phase 2 unlock.
 
 ## 2. URL / Link Ingestion
 
@@ -18,21 +18,21 @@ Telegram has native voice messages. I want to transcribe them (Whisper or equiva
 
 A cron job that looks at what was captured recently, what's trending in the graph, and sends a Telegram summary. "You captured 4 notes this week, mostly about worldbuilding. Your highest-degree new node is X. You haven't touched Kingdom in 12 days." Nanobot's `CronService` pattern. Keeps the knowledge base alive instead of write-only.
 
-## 5. Multi-Tool Chaining
+## 5. ~~Multi-Tool Chaining~~ (Done)
 
-When the LLM is in the loop, I want to chain across all three backends in one turn. "Compare my bevy projects to my game ideas and tell me what's missing" should search `icli projects -c bevy`, search `icli ideas -q game`, and synthesize. Right now each command is isolated — there's no cross-cutting intelligence.
+The LLM agent chains across Forest tools in a single turn — search, read, capture, update, link, edges, synthesize, and GitHub tools. Cross-cutting intelligence is live.
 
-## 6. Conversation Memory
+## 6. ~~Conversation Memory~~ (Done)
 
-The Telegram bot is stateless — each message is independent. I want session context so "tell me more about that last one" works after a search. Doesn't need to be fancy — even a per-chat last-5-messages buffer would cover most follow-up patterns.
+Per-chat message buffer (last 10 turns, 1-hour TTL) with LRU eviction. "Tell me more about that" now works. Memory context is injected into the LLM prompt automatically.
 
-## 7. Forest Graph Navigation via Buttons
+## 7. ~~Forest Graph Navigation via Buttons~~ (Done)
 
-Search results already have read buttons. I want the read view to also have buttons: "Related nodes" (from edges), "Same tags", "Back to search". Turn the bot into a graph browser you can tap through, not just a search box.
+Read view now has a "Related nodes" button that loads edges. Edge view shows connected nodes with read buttons. You can tap-navigate the graph.
 
-## 8. Forwarded Message Capture
+## 8. ~~Forwarded Message Capture~~ (Done)
 
-When you forward a message from another Telegram chat to Jack, auto-capture it as a note. The forwarded-from metadata becomes attribution, the text becomes the body. Useful for saving conversations, recommendations, quotes.
+Forwarding a message to Jack auto-captures it as a Forest note with attribution from the forward metadata (sender name, channel, etc.).
 
 ## 9. Inline Mode
 

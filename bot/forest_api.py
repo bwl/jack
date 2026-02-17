@@ -88,6 +88,10 @@ class ForestAPI:
         resp = await self._client.put(f"{self._base}{path}", json=body)
         return self._unwrap(resp)
 
+    async def _delete_req(self, path: str) -> dict[str, Any]:
+        resp = await self._client.delete(f"{self._base}{path}")
+        return self._unwrap(resp)
+
     async def update(self, ref: str, title: str | None = None, body: str | None = None, tags: str | None = None) -> dict[str, Any]:
         payload: dict[str, Any] = {}
         if title is not None:
@@ -98,6 +102,21 @@ class ForestAPI:
             payload["tags"] = [t.strip().lstrip("#") for t in tags.split(",")]
         data = await self._put(f"/nodes/{ref}", payload)
         return {"node": data.get("node", {})}
+
+    async def delete(self, ref: str) -> dict[str, Any]:
+        data = await self._delete_req(f"/nodes/{ref}")
+        return {"deleted": ref, "result": data}
+
+    async def link(self, ref1: str, ref2: str) -> dict[str, Any]:
+        data = await self._post("/edges", {"source": ref1, "target": ref2})
+        return {"linked": [ref1, ref2], "result": data}
+
+    async def edges(self, ref: str | None = None) -> dict[str, Any]:
+        if ref:
+            data = await self._get(f"/nodes/{ref}", includeBody="false", includeEdges="true")
+            return {"edges": data.get("edges", [])}
+        data = await self._get("/edges")
+        return {"edges": data.get("edges", [])}
 
     async def tags(self) -> dict[str, Any]:
         data = await self._get("/tags")

@@ -86,6 +86,21 @@ class ForestCLI:
         raw = await self._run(*args)
         return {"node": raw.get("node", {})}
 
+    async def delete(self, ref: str) -> dict[str, Any]:
+        raw = await self._run("delete", ref, "--yes")
+        return {"deleted": ref, "result": raw}
+
+    async def link(self, ref1: str, ref2: str) -> dict[str, Any]:
+        raw = await self._run("link", ref1, ref2)
+        return {"linked": [ref1, ref2], "result": raw}
+
+    async def edges(self, ref: str | None = None) -> dict[str, Any]:
+        args = ["edges"]
+        if ref:
+            args.append(ref)
+        raw = await self._run(*args)
+        return {"edges": raw}
+
     async def stats(self) -> dict[str, Any]:
         raw = await self._run("stats")
         return _normalize_stats(raw)
