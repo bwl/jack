@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import re
+from typing import Any
 
 import httpx
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
@@ -22,6 +23,7 @@ from .config import Config
 from .forest import ForestCLI
 from .forest_api import ForestAPI
 from .github import GitHubCLI
+from .memory import ChatMemory
 from .router import Router
 from .tools import IdeaCLI, NovelCLI
 from . import formatting
@@ -40,6 +42,7 @@ def _build_keyboard(buttons: list[tuple[str, str]]) -> InlineKeyboardMarkup | No
 class JackBot:
     def __init__(self, config: Config) -> None:
         self.config = config
+        self.memory = ChatMemory()
 
         if config.mode == "api":
             self.forest = ForestAPI(
@@ -80,6 +83,7 @@ class JackBot:
 
         # LLM agent (optional — needs API key)
         self.agent: Agent | None = None
+        self._http_client: httpx.AsyncClient | None = None
         if config.openrouter_api_key:
             self._http_client = httpx.AsyncClient()
             self.agent = Agent(
@@ -141,6 +145,11 @@ class JackBot:
 
         assert update.message is not None and update.message.text is not None
         chat = update.message.chat
+        chat_id = chat.id
+        user_text = update.message.text
+
+        # Record user message in memory
+        self.memory.add(chat_id, "user", user_text)
 
         # Extract reply-to context for conversation threading
         reply_context: str | None = None
@@ -159,18 +168,28 @@ class JackBot:
                 if status_msg is None:
                     status_msg = await chat.send_message(text)
                 else:
-                    await status_msg.edit_text(text)
+                    try:
+                        await status_msg.edit_text(text)
+                    except Exception:
+                        pass  # Telegram may reject if text unchanged
+
+            # Build context: conversation memory + reply-to
+            memory_context = self.memory.format_for_prompt(chat_id)
 
             # Typing keepalive: re-send every 4s so Telegram doesn't drop the indicator
             typing_task = asyncio.create_task(self._typing_keepalive(chat))
             try:
                 reply = await self.router.handle_text(
-                    update.message.text,
+                    user_text,
                     on_tool_call=_on_tool_call,
                     reply_context=reply_context,
+                    memory_context=memory_context,
                 )
             finally:
                 typing_task.cancel()
+
+            # Record assistant response in memory
+            self.memory.add(chat_id, "assistant", reply)
 
             # Clean up status message
             if status_msg is not None:
@@ -191,12 +210,60 @@ class JackBot:
         # No agent — plain search with inline buttons
         await chat.send_action(ChatAction.TYPING)
         try:
-            data = await self.forest.search(update.message.text)
+            data = await self.forest.search(user_text)
             text = formatting.format_search(data)
             keyboard = _build_keyboard(formatting.search_buttons(data))
             await update.message.reply_text(text, parse_mode=ParseMode.HTML, reply_markup=keyboard)
         except Exception as e:
             await update.message.reply_text(formatting.format_error(str(e)), parse_mode=ParseMode.HTML)
+
+    async def _forward_handler(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        """Auto-capture forwarded messages as Forest notes."""
+        if not self._is_authorized(update):
+            return
+
+        assert update.message is not None
+        msg = update.message
+        text = msg.text or msg.caption or ""
+        if not text.strip():
+            return
+
+        await msg.chat.send_action(ChatAction.TYPING)
+
+        # Build attribution from forward metadata
+        origin = msg.forward_origin
+        attribution = "Forwarded message"
+        if origin is not None:
+            origin_type = getattr(origin, "type", None)
+            if origin_type == "user":
+                sender = getattr(origin, "sender_user", None)
+                if sender:
+                    name = sender.full_name or sender.username or str(sender.id)
+                    attribution = f"Forwarded from {name}"
+            elif origin_type == "channel":
+                chan = getattr(origin, "chat", None)
+                if chan:
+                    attribution = f"Forwarded from channel: {chan.title or chan.username}"
+            elif origin_type == "hidden_user":
+                sender_name = getattr(origin, "sender_user_name", "someone")
+                attribution = f"Forwarded from {sender_name}"
+
+        # Truncate for title
+        title_text = text[:60].replace("\n", " ")
+        if len(text) > 60:
+            title_text += "..."
+
+        try:
+            data = await self.forest.capture(
+                title=f"Fwd: {title_text}",
+                body=f"{attribution}\n\n{text}",
+                tags="topic:forwarded",
+            )
+            reply = formatting.format_capture(data)
+        except Exception as e:
+            reply = formatting.format_error(str(e))
+
+        await msg.reply_text(reply, parse_mode=ParseMode.HTML)
 
     @staticmethod
     async def _typing_keepalive(chat: Any) -> None:
@@ -209,7 +276,7 @@ class JackBot:
             pass
 
     async def _callback_handler(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-        """Handle inline button presses (e.g. read:abcd1234)."""
+        """Handle inline button presses (e.g. read:abcd1234, edges:abcd1234)."""
         if not self._is_authorized(update):
             return
 
@@ -223,9 +290,25 @@ class JackBot:
             try:
                 result = await self.forest.read(ref)
                 text = formatting.format_read(result)
+                # Add graph navigation buttons
+                buttons = formatting.read_nav_buttons(result)
+                keyboard = _build_keyboard(buttons)
             except Exception as e:
                 text = formatting.format_error(str(e))
-            await query.message.reply_text(text, parse_mode=ParseMode.HTML)
+                keyboard = None
+            await query.message.reply_text(text, parse_mode=ParseMode.HTML, reply_markup=keyboard)
+
+        elif data.startswith("edges:"):
+            ref = data[6:]
+            try:
+                result = await self.forest.edges(ref=ref)
+                text = formatting.format_edges(result, ref)
+                buttons = formatting.edge_buttons(result)
+                keyboard = _build_keyboard(buttons)
+            except Exception as e:
+                text = formatting.format_error(str(e))
+                keyboard = None
+            await query.message.reply_text(text, parse_mode=ParseMode.HTML, reply_markup=keyboard)
 
     @staticmethod
     async def _poll_commits(context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -240,6 +323,15 @@ class JackBot:
                 logger.info("Commit queue: %d pending commits", pending)
         except Exception:
             logger.warning("Commit queue poll failed", exc_info=True)
+
+    async def _shutdown(self, app: Application) -> None:
+        """Clean up async resources on shutdown."""
+        if self._http_client is not None:
+            await self._http_client.aclose()
+            logger.info("HTTP client closed")
+        if isinstance(self.forest, ForestAPI):
+            await self.forest.close()
+            logger.info("Forest API client closed")
 
     def run(self) -> None:
         app = Application.builder().token(self.config.telegram_token).build()
@@ -265,6 +357,12 @@ class JackBot:
             app.add_handler(CommandHandler(cmd, self._command_handler))
 
         app.add_handler(CallbackQueryHandler(self._callback_handler))
+
+        # Forwarded messages get auto-captured (must be before general text handler)
+        app.add_handler(MessageHandler(
+            filters.TEXT & ~filters.COMMAND & filters.FORWARDED,
+            self._forward_handler,
+        ))
         app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, self._text_handler))
 
         # Register commit queue polling job
@@ -276,6 +374,9 @@ class JackBot:
                 first=10,  # first poll 10s after startup
             )
             logger.info("Commit queue polling registered (every %ds)", self.commit_queue.poll_interval)
+
+        # Register shutdown callback for cleanup
+        app.post_shutdown = self._shutdown
 
         mode_label = f"mode={self.config.mode}"
         logger.info(f"Jack bot starting ({mode_label}, long polling)...")

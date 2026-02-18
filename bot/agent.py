@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import time
@@ -133,6 +134,60 @@ TOOLS = [
     {
         "type": "function",
         "function": {
+            "name": "forest_delete",
+            "description": "Delete a Forest node by UUID prefix. Use with caution — this is irreversible.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "ref": {
+                        "type": "string",
+                        "description": "UUID prefix (4+ characters) of the node to delete.",
+                    },
+                },
+                "required": ["ref"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "forest_link",
+            "description": "Create a manual edge between two Forest nodes.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "ref1": {
+                        "type": "string",
+                        "description": "UUID prefix of the first node.",
+                    },
+                    "ref2": {
+                        "type": "string",
+                        "description": "UUID prefix of the second node.",
+                    },
+                },
+                "required": ["ref1", "ref2"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "forest_edges",
+            "description": "List edges (connections) for a node, or all edges if no ref given.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "ref": {
+                        "type": "string",
+                        "description": "UUID prefix of the node to get edges for (optional — omit for all edges).",
+                    },
+                },
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "commit_queue",
             "description": "Get outstanding commits from the ambient commit queue. These are commits that haven't been documented yet.",
             "parameters": {
@@ -231,7 +286,12 @@ TOOLS = [
 
 MAX_ROUNDS = 10
 MAX_REPEAT = 3
-TOTAL_TIMEOUT = 120.0
+TOTAL_TIMEOUT = 180.0  # Raised from 120s to accommodate synthesize calls
+LLM_RETRY_ATTEMPTS = 2
+LLM_RETRY_BACKOFF = 2.0  # seconds
+
+# Tools that need more time (e.g. synthesize calls a remote LLM)
+_SLOW_TOOLS = {"forest_synthesize"}
 
 ToolHook = Callable[[int, str, dict[str, Any]], Awaitable[None]]
 
@@ -250,6 +310,13 @@ def _tool_label(name: str, args: dict[str, Any]) -> str:
             return "Listing tags"
         case "forest_update":
             return f"Updating node {args.get('ref', '')}"
+        case "forest_delete":
+            return f"Deleting node {args.get('ref', '')}"
+        case "forest_link":
+            return f"Linking {args.get('ref1', '')} ↔ {args.get('ref2', '')}"
+        case "forest_edges":
+            ref = args.get("ref", "all")
+            return f"Listing edges ({ref})"
         case "forest_synthesize":
             return "Synthesizing (this may take a moment)"
         case "commit_queue":
@@ -295,6 +362,12 @@ async def _dispatch_tool(
             )
         case "forest_tags":
             result = await forest.tags()
+        case "forest_delete":
+            result = await forest.delete(args["ref"])
+        case "forest_link":
+            result = await forest.link(args["ref1"], args["ref2"])
+        case "forest_edges":
+            result = await forest.edges(ref=args.get("ref"))
         case "forest_synthesize":
             result = await forest.synthesize(args["node_ids"])
         case "commit_queue":
@@ -320,6 +393,16 @@ async def _dispatch_tool(
         case _:
             return json.dumps({"error": f"Unknown tool: {name}"})
     return json.dumps(result, default=str)
+
+
+def _extract_last_text(messages: list[dict[str, Any]]) -> str:
+    """Walk backwards through messages to find the last assistant text."""
+    for msg in reversed(messages):
+        if msg.get("role") == "assistant":
+            content = msg.get("content")
+            if content and isinstance(content, str):
+                return content
+    return ""
 
 
 class Agent:
@@ -356,13 +439,25 @@ class Agent:
         step = 0
         start = time.monotonic()
 
-        for _ in range(MAX_ROUNDS):
+        for round_num in range(MAX_ROUNDS):
             elapsed = time.monotonic() - start
             remaining = TOTAL_TIMEOUT - elapsed
             if remaining <= 0:
+                # Return partial results instead of a dead-end message
+                partial = _extract_last_text(messages)
+                if partial:
+                    return partial
                 return "Timed out while thinking. Try a simpler question?"
 
-            resp = await self._chat(messages, timeout=remaining)
+            try:
+                resp = await self._chat_with_retry(messages, timeout=remaining)
+            except (httpx.HTTPStatusError, httpx.TimeoutException) as e:
+                logger.warning("LLM API failed after retries: %s", e)
+                partial = _extract_last_text(messages)
+                if partial:
+                    return partial
+                return "I'm having trouble reaching my brain right now. Try again in a moment?"
+
             choice = resp["choices"][0]
             msg = choice["message"]
 
@@ -390,6 +485,9 @@ class Agent:
                 repeat_count = call_history.count(call_key)
                 if repeat_count >= MAX_REPEAT:
                     logger.warning("Agent repeated %s %dx, aborting", name, repeat_count)
+                    partial = _extract_last_text(messages)
+                    if partial:
+                        return partial
                     return "I got stuck in a loop. Try rephrasing your question?"
 
                 step += 1
@@ -412,26 +510,68 @@ class Agent:
                     "content": result,
                 })
 
-        return "Reached the maximum number of steps. Here's what I found so far."
+        # Hit max rounds — ask the LLM for a final summary with what it has
+        messages.append({
+            "role": "user",
+            "content": "You've used all your tool steps. Please summarize what you found so far in a final answer.",
+        })
+        try:
+            resp = await self._chat_with_retry(messages, timeout=30.0, tools=False)
+            return resp["choices"][0]["message"].get("content") or ""
+        except Exception:
+            partial = _extract_last_text(messages)
+            if partial:
+                return partial
+            return "Reached the maximum number of steps. Try a simpler question?"
+
+    async def _chat_with_retry(
+        self,
+        messages: list[dict[str, Any]],
+        timeout: float,
+        tools: bool = True,
+    ) -> dict[str, Any]:
+        """Chat completion with retry on transient failures."""
+        last_err: Exception | None = None
+        for attempt in range(1 + LLM_RETRY_ATTEMPTS):
+            try:
+                return await self._chat(messages, timeout=timeout, tools=tools)
+            except (httpx.TimeoutException, httpx.HTTPStatusError) as e:
+                last_err = e
+                status = getattr(getattr(e, "response", None), "status_code", None)
+                # Don't retry on 4xx client errors (except 429 rate limit)
+                if status is not None and 400 <= status < 500 and status != 429:
+                    raise
+                if attempt < LLM_RETRY_ATTEMPTS:
+                    wait = LLM_RETRY_BACKOFF * (2 ** attempt)
+                    logger.warning(
+                        "LLM call failed (attempt %d/%d), retrying in %.1fs: %s",
+                        attempt + 1, 1 + LLM_RETRY_ATTEMPTS, wait, e,
+                    )
+                    await asyncio.sleep(wait)
+        raise last_err  # type: ignore[misc]
 
     async def _chat(
         self,
         messages: list[dict[str, Any]],
         timeout: float,
+        tools: bool = True,
     ) -> dict[str, Any]:
         """Single non-streaming chat completion call to OpenRouter."""
+        body: dict[str, Any] = {
+            "model": self._model,
+            "messages": messages,
+        }
+        if tools:
+            body["tools"] = TOOLS
+
         resp = await self._client.post(
             f"{self._base_url}/chat/completions",
             headers={
                 "Authorization": f"Bearer {self._api_key}",
                 "Content-Type": "application/json",
             },
-            json={
-                "model": self._model,
-                "messages": messages,
-                "tools": TOOLS,
-            },
-            timeout=min(timeout, 45.0),
+            json=body,
+            timeout=min(timeout, 60.0),
         )
         resp.raise_for_status()
         return resp.json()

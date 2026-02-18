@@ -19,6 +19,9 @@ class ForestBackend(Protocol):
     async def read(self, ref: str) -> dict[str, Any]: ...
     async def capture(self, title: str, body: str, tags: str | None = None) -> dict[str, Any]: ...
     async def update(self, ref: str, title: str | None = None, body: str | None = None, tags: str | None = None) -> dict[str, Any]: ...
+    async def delete(self, ref: str) -> dict[str, Any]: ...
+    async def link(self, ref1: str, ref2: str) -> dict[str, Any]: ...
+    async def edges(self, ref: str | None = None) -> dict[str, Any]: ...
     async def stats(self) -> dict[str, Any]: ...
     async def tags(self) -> dict[str, Any]: ...
     async def synthesize(self, node_ids: list[str]) -> dict[str, Any]: ...
@@ -89,17 +92,21 @@ class Router:
         text: str,
         on_tool_call: Any = None,
         reply_context: str | None = None,
+        memory_context: str | None = None,
     ) -> str:
         """Free text goes through the LLM agent if available, else plain search."""
         if self.agent is not None:
             try:
                 from .prompt import SYSTEM_PROMPT
 
-                user_message = text
+                # Build full user message with context layers
+                parts: list[str] = []
+                if memory_context:
+                    parts.append(memory_context)
                 if reply_context:
-                    user_message = (
-                        f"[Previous message: {reply_context}]\n\n{text}"
-                    )
+                    parts.append(f"[Replying to: {reply_context}]")
+                parts.append(text)
+                user_message = "\n\n".join(parts)
 
                 return await self.agent.run(
                     user_message, SYSTEM_PROMPT, self.forest,
